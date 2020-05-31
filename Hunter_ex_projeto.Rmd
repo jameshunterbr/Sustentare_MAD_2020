@@ -1,0 +1,218 @@
+---
+title: "Projeto Exemplar de Prof. Jim"
+author: "James Hunter, Ph.D."
+date: "5/30/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(scipen = 9)
+```
+
+Este projeto é um pequeno exemplo de um projeto de aula, seja projeto individual ou projeto em grupo. Vai ter todos os elementos de um projeto para a matéria. Só vai faltar a profundidade de explicação em texto que estou esperando dos alunos. Pode copiar a estrutura do arquivo e dos blocos e até do código se for útil para seu projeto.
+
+Este projeto de exemplo vai usar os dados do pacote `gapminder`. O propósito do estudo é ver se a expectativa de vida fica maior em países mais ricos que em países mais pobres. Ou seja, se expectativa de vida (`lifeExp`) cresce com PIB per capita (`gdpPercap`). Eu vou focar em dois anos, 1972 e 1992, e comparar os dados e os resultados da regressão linear para esses anos para ver se tiver diferençãs interessantes.
+
+**VSS**: Quem quer usar Gapminder, utilize o site: https://www.gapminder.org/data/ para fazer o download de variáveis que lhe interessem. O pacote tem muito poucas variáveis.
+
+# Carregar Pacotes
+
+```{r carreg_pacotes, message = FALSE, warning = FALSE}
+library(tidyverse)
+library(gapminder)
+library(summarytools)
+library(caret)
+library(ggsci)
+```
+
+Esses são os pacotes de R necessário para analisar os dados de Gapminder. Vocês podem descrever porque estão usando os pacotes que usam.
+
+# Carregar Dados
+
+Limitar os dados para anos 1972 e 1992
+
+```{r dados, echo = TRUE, eval = TRUE}
+gm <- gapminder %>% 
+  filter(year %in% c(1972, 1992))
+```
+
+Pode explicar aqui de onde vieram os dados e o que eles significam. Quais são as unidades para cada variável?
+
+# Limpeza dos Dados
+
+`year` é realmente um fator, não está usado numericamente. 
+
+```{r eda_1, warning = FALSE}
+# informação básica
+
+glimpse(gm)
+
+gm %>% 
+  select(-1) %>% 
+  dfSummary(graph.col = FALSE, na.col = FALSE)
+
+# Limpar nomes de variáveis - life_exp
+
+gm <- janitor::clean_names(gm)
+
+# Mude year to factor
+gm <- gm %>% 
+  mutate(year = factor(year))
+```
+
+# Análise Exploratório dos Dados
+
+```{r eda}
+descr(gm, stats = c("mean", "sd", "min", "med", "max", "IQR", "CV"))
+
+# agrupado por ano
+gm %>% 
+  group_by(year) %>% 
+  descr(stats = c("mean", "sd", "min", "med", "max", "IQR", "CV")) 
+
+# média e sd por país
+
+gm %>% 
+  group_by(country) %>% 
+  summarise(mean_pop = mean(pop),
+            sd_pop = sd(pop),
+            mean_gdp = mean(gdp_percap),
+            sd_gdp = sd(gdp_percap),
+            mean_life = mean(life_exp),
+            sd_life = sd(life_exp)) %>% 
+  ungroup() %>% 
+  knitr::kable()
+
+```
+
+O que quer dizer todos esses dados nestes resumos?
+
+# Visualizações
+
+## Boxplots dos variáveis `pop`, `life_exp` e `gdp_percap`
+
+```{r vis_box}
+
+box_pop <- ggplot(gm, mapping = aes(x = year, y = pop)) + 
+  geom_boxplot() + 
+  geom_jitter() +
+  scale_y_log10() +
+  ggtitle("População por país por 1972 e 1992")
+
+box_gdp <- ggplot(gm, mapping = aes(x = year, y = gdp_percap)) + 
+  geom_boxplot() + 
+  geom_jitter() +
+  scale_y_log10() +
+  ggtitle("PIB por capita por país por 1972 e 1992")
+
+box_life <- ggplot(gm, mapping = aes(x = year, y = life_exp)) + 
+  geom_boxplot() + 
+  geom_jitter() +
+  scale_y_log10() +
+  ggtitle("Expectativa de vida por país por 1972 e 1992")
+
+box_pop
+box_gdp
+box_life
+
+```
+
+## Gráfico de `life_exp` x `gdp_percap`
+
+```{r gdp_graf}
+
+ggplot(gm, mapping = aes(x = gdp_percap, y = life_exp, colour = year)) +
+  geom_point() +
+  ggtitle("PIB por capital x Expectativa de Vida") + 
+  scale_x_log10() + 
+  scale_color_aaas()
+```
+
+O que diz este gráfico? As cores vêm de do pacote `ggsci` e uma paleta que uso frequentemente (`scale_color_aaas()`).
+
+Vocês repararam que a escala de eixo x é logarítmico. O que está significa? Eu fiz isso para espalhar mais os pontos. A escala original de `gdp_percap` fez os pontos ficar só no lado esquerdo do gráfico e sugeriu que esta variável não é muito linear. Mais, tem um ponto no extremo (Kuwait de 1972). Este ponto está distorcendo a distribuição de `gdp_percap`. Para este análise, vou tirar Kuwait de análise para refletir melhor a distribuição geral. 
+
+```{r gdp_grafa, echo = FALSE}
+
+ggplot(gm, mapping = aes(x = gdp_percap, y = life_exp, colour = year)) +
+  geom_point() +
+  ggtitle("PIB por capital x Expectativa de Vida") + 
+  scale_color_aaas()
+```
+
+# Limpeza Final - Tirar Kuwait da Análise
+
+Vou mostrar os cálculos mas vocês precisam mostrar aqui o porque disso. Porque vocês fizeram ajustes finais.
+
+```{r ajuste_Kuwait}
+
+gm_mod <- gm %>% 
+  filter(country != "Kuwait")
+
+descr(gm_mod, stats = c("mean", "sd", "min", "med", "max", "IQR", "CV"))
+
+# agrupado por ano
+gm_mod %>% 
+  group_by(year) %>% 
+  descr(stats = c("mean", "sd", "min", "med", "max", "IQR", "CV"))
+
+ggplot(gm_mod, mapping = aes(x = gdp_percap, y = life_exp, colour = year)) +
+  geom_point() +
+  ggtitle("PIB por capital x Expectativa de Vida") + 
+  scale_color_aaas()
+```
+
+# Análise de `life_exp` x `gdp_percap`
+
+O seguinte vai ser uma regressão linear simples entre as duas variáveis de interesse. Deve ser seguido por uma análise do que ela significa. Vou continuar com a transformação logarítmica por causa da tendência quadrática clara na variável `gdp_percap`.
+
+```{r analise}
+fit_basic <- lm(life_exp ~ gdp_percap, data = gm_mod)
+summary(fit_basic)
+
+fit_log <- lm(life_exp ~ log10(gdp_percap), data = gm_mod)
+summary(fit_log)
+```
+
+## Gráfico do Modelo
+
+```{r graf_mod}
+ggplot(gm_mod, mapping = aes(x = log10(gdp_percap), y = life_exp, colour = year)) +
+  geom_point() +
+  ggtitle("PIB por capital x Expectativa de Vida") + 
+  scale_color_aaas() + 
+  stat_smooth(method = "lm", color = "black", se = FALSE)
+```
+
+Reparem que o $R^2$ aumenta bastante quando a transformação está aplicada. Só vou testar o modelo `fit_log` porque este é o modelo que acho melhor. Também, precisa anotar o que é o resultado do teste-F do modelo e a teste da inclinação da linha (se a inclinação não é igual a 0)
+
+## Validação do Modelo
+
+Aqui deve aplicar pelo menos duas técnicas (gráficos) de validação: a plotagem dos resíduos contra os valores previstos para expectativa de vida pelo modelo
+
+### Gráfico dos Resíduos
+
+```{r grresid, echo = FALSE, fig.height = 2.4, fig.width = 5}
+mods <- broom::augment(fit_log) 
+residgr <- ggplot(data = mods, mapping = aes(x = .fitted, y = .resid))
+residgr <- residgr + geom_point(shape = 20)
+residgr <- residgr + geom_hline(yintercept = 0, color = "midnightblue")
+residgr <- residgr + labs(x = "Valores Previstos pelo Modelo", 
+                          y = "Resíduos")
+residgr
+
+```
+
+### Gráfico Q-Q 
+
+```{r qqfit, echo = TRUE, fig.height = 2.6, fig.width = 5}
+grqq <- ggplot(data = fit_log, aes(sample = .resid))
+grqq <- grqq + stat_qq()
+grqq <- grqq + stat_qq_line(color = "darkred")
+grqq <- grqq + labs(x = "Quantiles Teóricos", 
+                    y = "Quantiles da Amostra")
+grqq
+```
+
+Aqui, os valores dos resíduos divergem da linha que indica normalidade dos resíduos, especialmente no lado esquerda. Este indica *skewness*, ou seja mais valores neste lado da distribuição. O resultado disso é que a curva dos resíduos não é muito normal nas extremidades. O que está poder querer dizer? É para você decider e relatar se esse acontece com sua análise no seu relatório.
